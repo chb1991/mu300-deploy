@@ -19,7 +19,7 @@ for mod in nft_redir nft_socket nft_tproxy; do
   grep -q "/$mod[.]ko$" "$MODS" || fail "缺少内置 $mod。"
 done
 # --check is non-mutating: it does not install live firewall rules.
-nft --check -f - >/dev/null 2>&1 <<'NFT' || fail 'nftables TPROXY/SOCKET 规则检查失败，未修改文件。'
+nft --check -f - <<'NFT' || fail 'nftables TPROXY/SOCKET 规则检查失败，未修改文件。'
 table inet mu300_probe {
   chain prerouting {
     type filter hook prerouting priority mangle; policy accept;
