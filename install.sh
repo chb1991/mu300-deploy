@@ -1,7 +1,7 @@
 #!/bin/sh
 # MU300/Changxing-60 — OpenWrt 25.12.x aarch64_generic
 # PassWall2 + sing-box + AdGuard Home installer (no private nodes included).
-# Version: 2026-11-06-r2
+# Version: 2026-11-06-r3
 set -eu
 umask 077
 
@@ -13,7 +13,16 @@ KEY_TMP=''
 FEED_TMP=''
 PENDING_FILE=''
 SWITCH_SNAPSHOT=''
+BOOTSTRAP_PID=''
+stop_root_agh() {
+  if [ -n "$BOOTSTRAP_PID" ]; then
+    kill "$BOOTSTRAP_PID" 2>/dev/null || true
+    wait "$BOOTSTRAP_PID" 2>/dev/null || true
+    BOOTSTRAP_PID=''
+  fi
+}
 cleanup() {
+  stop_root_agh
   result=$?
   [ -z "$KEY_TMP" ] || rm -f "$KEY_TMP"
   [ -z "$FEED_TMP" ] || rm -f "$FEED_TMP"
@@ -166,43 +175,55 @@ else
   if netstat -lnut 2>/dev/null | grep -Eq '[[:space:]][^[:space:]]+:(6053|8081)[[:space:]]'; then
     warn '6053 或 8081 已被占用，跳过 AdGuard Home 自动初始化。'
   else
-    say '首次配置 AdGuard Home（DNS 127.0.0.1:6053，Web LAN:8081）'
-    uci -q set adguardhome.config.work_dir='/opt/adguardhome'
+    say '首次配置 AdGuard Home（临时 root 引导，DNS 127.0.0.1:6053，Web LAN:8081）'
+    # /opt can be writable by other accounts on MU300; use a protected persistent directory.
+    AGH_WORK=/etc/adguardhome/data
+    uci -q set adguardhome.config.work_dir="$AGH_WORK"
     uci commit adguardhome
+    mkdir -p "$AGH_WORK" "$(dirname "$AGH_YAML")"
+    chown -R adguardhome:adguardhome "$(dirname "$AGH_YAML")"
+    chmod 700 "$(dirname "$AGH_YAML")" "$AGH_WORK"
     /etc/init.d/adguardhome stop >/dev/null 2>&1 || true
-    if ! /etc/init.d/adguardhome start; then
-      warn 'AdGuard Home 服务无法启动，保留 dnsmasq 原配置。'
-    else
-      WIZARD_READY=0
-      i=0
-      while [ "$i" -lt 15 ]; do
-        if curl --noproxy '*' -fsS --max-time 3 \
-          http://127.0.0.1:3000/control/install/get_addresses 2>/dev/null | grep -q 'interfaces'; then
-          WIZARD_READY=1
-          break
-        fi
-        i=$((i + 1))
-        sleep 2
-      done
-      if [ "$WIZARD_READY" = 1 ]; then
-        PASS="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
-        [ "${#PASS}" -ge 32 ] || fail '无法生成强密码。'
-        if printf '{"web":{"ip":"%s","port":8081},"dns":{"ip":"127.0.0.1","port":6053},"username":"admin","password":"%s","language":"zh-cn"}' \
-          "$LAN_IP" "$PASS" | \
-          curl --noproxy '*' -fsS --max-time 25 -H 'Content-Type: application/json' \
-            -X POST --data-binary @- 'http://127.0.0.1:3000/control/install/configure' >/dev/null; then
-          printf 'URL: http://%s:8081\nusername: admin\npassword: %s\n' "$LAN_IP" "$PASS" > "$AGH_LOGIN"
-          printf 'user = "admin:%s"\n' "$PASS" > "$AGH_AUTH"
-          chmod 600 "$AGH_LOGIN" "$AGH_AUTH"
-          NEW_AGH=1
-          say "首次配置成功，管理员密码保存在 $AGH_LOGIN（仅 root 可读）。"
-        else
-          warn "自动配置失败：请手动打开 http://$LAN_IP:3000 完成初始化。"
-        fi
-        unset PASS
-      else
-        warn "未检测到首次设置 API，请检查 http://$LAN_IP:3000。"
+    : > "$ROOT/agh-bootstrap.log"
+    /usr/bin/AdGuardHome --config "$AGH_YAML" --work-dir "$AGH_WORK" \
+      --logfile syslog --no-check-update > "$ROOT/agh-bootstrap.log" 2>&1 &
+    BOOTSTRAP_PID=$!
+    WIZARD_READY=0
+    i=0
+    while [ "$i" -lt 15 ]; do
+      if curl --noproxy '*' -fsS --max-time 3 \
+        http://127.0.0.1:3000/control/install/get_addresses 2>/dev/null | grep -q 'interfaces'; then
+        WIZARD_READY=1
+        break
       fi
+      i=$((i + 1))
+      sleep 2
+    done
+    if [ "$WIZARD_READY" = 1 ]; then
+      PASS="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+      [ "$(printf '%s' "$PASS" | wc -c)" -ge 32 ] || fail '无法生成强密码。'
+      if printf '{"web":{"ip":"%s","port":8081},"dns":{"ip":"127.0.0.1","port":6053},"username":"admin","password":"%s","language":"zh-cn"}' \
+        "$LAN_IP" "$PASS" | \
+        curl --noproxy '*' -fsS --max-time 25 -H 'Content-Type: application/json' \
+          -X POST --data-binary @- 'http://127.0.0.1:3000/control/install/configure' >/dev/null; then
+        printf 'URL: http://%s:8081\nusername: admin\npassword: %s\n' "$LAN_IP" "$PASS" > "$AGH_LOGIN"
+        printf 'user = "admin:%s"\n' "$PASS" > "$AGH_AUTH"
+        chmod 600 "$AGH_LOGIN" "$AGH_AUTH"
+        NEW_AGH=1
+        say "首次配置成功，管理员密码保存在 $AGH_LOGIN（仅 root 可读）。"
+      else
+        warn '初始化 API 失败；保留原 dnsmasq 配置。'
+      fi
+      unset PASS
+    else
+      warn "临时 root 首次启动失败，检查 $ROOT/agh-bootstrap.log 和 logread。"
+    fi
+    stop_root_agh
+    if [ -s "$AGH_YAML" ]; then
+      chown -R adguardhome:adguardhome "$(dirname "$AGH_YAML")"
+      /etc/init.d/adguardhome start || warn '低权限 AGH 启动失败；不会修改 dnsmasq。'
+    else
+      warn 'AGH 未生成有效 YAML；保留 dnsmasq。'
     fi
   fi
 fi
@@ -328,7 +349,10 @@ fi
 
 /etc/init.d/adguardhome enable >/dev/null 2>&1 || warn '启用 AGH 开机自启失败。'
 [ ! -x /etc/init.d/rpcd ] || /etc/init.d/rpcd restart >/dev/null 2>&1 || true
-say '安装流程结束。'
+if [ "$NEW_AGH" = 0 ] && [ ! -s "$AGH_YAML" ]; then
+  warn 'AdGuard Home 尚未成功初始化，请查看启动日志。'
+fi
+say '安装流程结束（服务状态请以实际检测为准）。'
 printf 'PassWall2: http://%s/cgi-bin/luci/admin/services/passwall2\n' "$LAN_IP"
 printf 'AdGuard Home: http://%s:8081\n' "$LAN_IP"
 printf '首次安装密码：cat %s\n' "$AGH_LOGIN"
