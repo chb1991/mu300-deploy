@@ -117,3 +117,21 @@ wget -O /tmp/repair-agh.sh https://raw.githubusercontent.com/chb1991/mu300-deplo
 注意：**独立修复脚本不会修改 dnsmasq、DHCP、PassWall2**。AGH 可以启动不代表各终端已经经过广告过滤，下一阶段仍需独立检验 DNS 接管。现有有效 YAML 不会被覆盖。
 
 R3 尚未在真实 MU300 上完成端到端验证，遇到失败请检查 `/root/mu300-deploy/agh-bootstrap.log`、`logread` 和监听端口。
+
+## 修复 PassWall2 内置 TPROXY 的 LuCI 误判（MU300 7.2.8）
+
+当 `/proc/config.gz` 中 `CONFIG_NFT_TPROXY=y`、`CONFIG_NFT_SOCKET=y`、`CONFIG_NFT_REDIR=y`，并且 `modules.builtin` 含对应模块时，PassWall2 仍可能显示“缺少组件，透明代理不可用”。这是 LuCI 只读 `lsmod` 而不识别内核内置模块的误判。
+
+先运行[专用修复脚本](fix-passwall2-builtin.sh)：
+
+```sh
+wget -O /tmp/fix-passwall2-builtin.sh https://raw.githubusercontent.com/chb1991/mu300-deploy/main/fix-passwall2-builtin.sh && sh /tmp/fix-passwall2-builtin.sh
+```
+
+脚本会验证内核配置、`modules.builtin` 和 `nft --check` 规则能力，通过后备份并修改两个 PassWall2 LuCI 检测页面，不更改 DNS、DHCP、firewall 和代理节点；未通过时拒绝修复。改动可以通过下面命令回滚：
+
+```sh
+sh /root/mu300-deploy/restore-passwall2-ui.sh
+```
+
+这**只修复 LuCI 组件检测**，不伪造 `kmod-nft-*` 包、不代替完整透明代理连通性测试。PassWall2 启动脚本仍可能提示两个 `kmod` 包名缺失。PassWall2 升级后可能需要重新应用该修复。若只安装了 sing-box，没有安装 Xray，请使用兼容的 sing-box 节点/分流设置，不要把默认 Xray 示例节点作为出站。
