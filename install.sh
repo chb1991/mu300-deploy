@@ -22,8 +22,8 @@ stop_root_agh() {
   fi
 }
 cleanup() {
-  stop_root_agh
   result=$?
+  stop_root_agh
   [ -z "$KEY_TMP" ] || rm -f "$KEY_TMP"
   [ -z "$FEED_TMP" ] || rm -f "$FEED_TMP"
   if [ -n "$PENDING_FILE" ] && [ -f "$PENDING_FILE" ] && [ -n "$SWITCH_SNAPSHOT" ]; then
