@@ -1,6 +1,6 @@
 # MU300（畅行60）一键部署：PassWall2 + sing-box + AdGuard Home
 
-版本：`2026-11-06-r2`。面向 **OpenWrt 25.12.x / aarch64_generic**，按用户 MU300 当前网络（LAN `192.168.9.1`、dnsmasq :53、Avahi :5353）设计。
+版本：`2026-11-06-r3`。面向 **OpenWrt 25.12.x / aarch64_generic**，按用户 MU300 当前网络（LAN `192.168.9.1`、dnsmasq :53、Avahi :5353）设计。
 
 > **状态**：安装脚本通过 `ash`、`dash`、`bash` 语法检查和基础逻辑复核；没有在真实 MU300 固件上做端到端运行。硬件定制内核依赖、第三方 APK 源实时可用性及实际 DNS 分流需要上机验证。
 
@@ -99,3 +99,21 @@ cat /root/mu300-deploy/agh-login.txt
 - 不自动改变防火墙规则、IPv6 RA、系统 DNS 监听地址或 LuCI 端口。
 - 不保证 OpenWrt 25.12.x 定制内核可找到匹配的 `kmod-*` 模块；缺失时必须人工处理，**不可强制安装不匹配的内核模块**。
 - 不保证广告过滤能够消除所有国内 APP 开屏广告和内容流广告。
+
+## R3 修复：首次启动权限不足
+
+R2 首次启动时可能出现错误：`this is the first launch of adguard home; you must run it as administrator`。
+
+R3 在没有现有 AdGuard Home YAML 的情况下，临时以 root 启动首次配置 API，完成后停止 root 实例，并恢复由 OpenWrt 官方的低权限 `adguardhome` 账号运行。默认持久化工作目录为 `/etc/adguardhome/data`。
+
+已经使用 R2 但未初始化成功的 MU300，请运行独立修复脚本，无需重装 PassWall2：
+
+```sh
+wget -O /tmp/repair-agh.sh https://raw.githubusercontent.com/chb1991/mu300-deploy/main/repair-agh.sh && sh /tmp/repair-agh.sh
+```
+
+修复后访问管理界面：`http://192.168.77.1:8081`（仅在路由器实际 LAN IP 是该地址时）。管理员密码只保存在本地：`cat /root/mu300-deploy/agh-login.txt`。
+
+注意：**独立修复脚本不会修改 dnsmasq、DHCP、PassWall2**。AGH 可以启动不代表各终端已经经过广告过滤，下一阶段仍需独立检验 DNS 接管。现有有效 YAML 不会被覆盖。
+
+R3 尚未在真实 MU300 上完成端到端验证，遇到失败请检查 `/root/mu300-deploy/agh-bootstrap.log`、`logread` 和监听端口。
