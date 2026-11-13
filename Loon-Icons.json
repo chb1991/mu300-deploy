@@ -1,9 +1,8 @@
 {
-  "name": "CHB Loon Icons",
-  "description": "Personal Loon icon collection",
+  "name": "BPB Panel",
   "icons": [
     {
-      "name": "BPB-Panel",
+      "name": "BPB-Panel.png",
       "url": "https://raw.githubusercontent.com/chb1991/mu300-deploy/main/icons/BPB-Panel.png"
     }
   ]
