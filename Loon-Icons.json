@@ -1,10 +1,10 @@
 {
   "name": "CHB Loon Icons",
+  "description": "Personal Loon icon collection",
   "icons": [
     {
       "name": "BPB-Panel",
-      "url": "https://wsrv.nl/?url=https%3A%2F%2Fraw.githubusercontent.com%2Fchb1991%2Fmu300-deploy%2Fmain%2Ficons%2FBPB-Panel.ico&output=png&w=512&h=512&fit=contain"
+      "url": "https://raw.githubusercontent.com/chb1991/mu300-deploy/main/icons/BPB-Panel.png"
     }
-  ],
-  "description": "Personal Loon icon library. Original BPB Worker Panel icon; delivered as 512x512 PNG."
+  ]
 }
