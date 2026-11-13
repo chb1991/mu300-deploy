@@ -1,0 +1,10 @@
+{
+  "name": "Loon Import Diagnostic",
+  "icons": [
+    {
+      "name": "Qure-Test.png",
+      "url": "https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Qure.png"
+    }
+  ],
+  "description": "Control test: known public Qure PNG, same Loon icon-set JSON structure"
+}
